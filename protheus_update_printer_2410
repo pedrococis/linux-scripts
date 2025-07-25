@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Cores para log
+VERDE="\e[32m"
+AMARELO="\e[33m"
+VERMELHO="\e[31m"
+RESET="\e[0m"
+
+# Função para log formatado com timestamp
+log() {
+    local nivel=$1
+    local mensagem=$2
+    local data=$(date "+%Y-%m-%d %H:%M:%S")
+    case "$nivel" in
+        "INFO") echo -e "${VERDE}[$data] [INFO] $mensagem${RESET}" ;;
+        "AVISO") echo -e "${AMARELO}[$data] [AVISO] $mensagem${RESET}" ;;
+        "ERRO") echo -e "${VERMELHO}[$data] [ERRO] $mensagem${RESET}" ;;
+    esac
+}
+
+# Função para erro crítico
+limpar_e_sair() {
+    log "ERRO" "$1"
+    exit 1
+}
+
+# Variáveis de caminho
+BASE_DIR="/outsourcing/totvs"
+SOURCE_FILE="$BASE_DIR/protheus_data/downloads/printer"
+TARGET_BASE="$BASE_DIR/protheus/bin"
+
+# Verifica se o arquivo fonte existe
+[[ ! -f "$SOURCE_FILE" ]] && limpar_e_sair "Arquivo fonte '$SOURCE_FILE' não encontrado."
+
+# Remove arquivos antigos e copia novo
+for dir in "$TARGET_BASE"/appserver*/; do
+    base=$(basename "$dir")
+    [[ "$base" == "appserver_cloud" ]] && continue
+
+    log "INFO" "Limpando arquivos antigos em $dir..."
+    rm -f "$dir/printer" "$dir/pdfprinter" && log "INFO" "Removidos printer e pdfprinter de $dir"
+
+    cp -f "$SOURCE_FILE" "$dir/printer" && log "INFO" "Novo printer copiado para $dir" || log "AVISO" "Falha ao copiar para $dir"
+
+    chown protheus:totvs "$dir/printer" && log "INFO" "Dono ajustado para protheus:totvs em $dir/printer"
+    chmod 770 "$dir/printer" && log "INFO" "Permissão ajustada para 770 em $dir/printer"
+done
+
+log "INFO" "Processo concluído."
+exit 0

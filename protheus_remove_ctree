@@ -1,0 +1,5 @@
+#!/bin/bash
+cd /outsourcing/totvs/protheus/ctreeserver/faircom/linux.x64.64bit/bin/ace/isam/data/ 
+find /outsourcing/totvs/protheus/ctreeserver/faircom/linux.x64.64bit/bin/ace/isam/data/ -name "*.fcs" -delete  
+find /outsourcing/totvs/protheus/ctreeserver/faircom/linux.x64.64bit/bin/ace/isam/data/ -name "*.FCS" -delete
+# CONCLUIDO

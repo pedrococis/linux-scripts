@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# Diretórios de origem e destino
+pacote="25_02_08_TOTVS_DBACCESS_BUILD_24_1_0_2_LINUX_X64.zip"
+origem_appserver="/outsourcing/totvs/protheus_data/downloads/7891/dbapi.so"
+appserver_destino="/outsourcing/totvs/protheus/bin"
+origem_dbaccess="/outsourcing/totvs/protheus_data/downloads/7891/"
+dbaccess_7891="/outsourcing/totvs/protheus/dbaccess/7891/"
+dbaccess_7892="/outsourcing/totvs/protheus/dbaccess/7892/"
+
+# Cores
+NEGRITO="\e[1m"
+VERDE="\e[32m"
+VERMELHO="\e[31m"
+AMARELO="\e[33m"
+RESET="\e[0m"
+
+# Muda para o diretório de downloads
+cd /outsourcing/totvs/protheus_data/downloads/ >/dev/null 2>&1 || { echo -e "${NEGRITO}${VERMELHO}Falha ao mudar para o diretório de downloads.${RESET}"; exit 1; }
+
+# Verifica se o arquivo pacote existe
+if [ ! -f "$pacote" ]; then
+    echo -e "${NEGRITO}${VERMELHO}O arquivo $pacote não foi encontrado na pasta downloads. A execução será interrompida.${RESET}"
+    exit 1
+fi
+
+# Remove o diretório '7891' e seu conteúdo
+rm -rf 7891 >/dev/null 2>&1
+
+# Descompacta o arquivo ZIP
+unzip "$pacote" -d . >/dev/null 2>&1
+
+# Define permissões 770 para os arquivos na origem_dbaccess
+sudo chmod -R 770 "$origem_dbaccess" >/dev/null 2>&1
+sudo chown -R protheus:totvs "$origem_dbaccess" >/dev/null 2>&1
+sudo /outsourcing/totvs/cloud/scripts/protheus/actions/protheus_all_services.py stop >/dev/null 2>&1
+
+# Verifica se o diretório de destino 1 existe e copia os arquivos se existir
+if [ -d "$dbaccess_7891" ]; then
+    sudo cp -rp "${origem_dbaccess}"* "$dbaccess_7891" >/dev/null 2>&1
+    echo -e "${NEGRITO}${VERDE}A pasta 7891 no caminho $dbaccess_7891 foi atualizada.${RESET}"
+else
+    echo -e "${NEGRITO}${VERMELHO}O diretório $dbaccess_7891 não existe neste servidor.${RESET}"
+fi
+
+# Verifica se o diretório de destino 2 existe e copia os arquivos se existir
+if [ -d "$dbaccess_7892" ]; then
+    sudo cp -rp "${origem_dbaccess}"* "$dbaccess_7892" >/dev/null 2>&1
+    echo -e "${NEGRITO}${VERDE}A pasta 7892 no caminho $dbaccess_7892 foi atualizada.${RESET}"
+else
+    echo -e "${NEGRITO}${VERMELHO}O diretório $dbaccess_7892 não existe neste servidor.${RESET}"
+fi
+
+# Loop para copiar o arquivo para cada subpasta que começa com 'appserver' e não é 'appserver_cloud'
+for destino in "$appserver_destino"/appserver*; do
+    if [[ -d "$destino" && "$destino" != "$appserver_destino/appserver_cloud" ]]; then
+        sudo cp -rp "$origem_appserver" "$destino" >/dev/null 2>&1
+        echo -e "${NEGRITO}${VERDE}A dbapi.so foi copiada para o caminho $destino neste servidor.${RESET}"
+    fi
+done
+
+# CONCLUÍDO

@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# LIMPANDO BACKUP
+find /outsourcing/totvs/protheus/bin/ -name "core.*" -delete 
+find /outsourcing/totvs/protheus/bin/ -name "*.log" -delete 
+find /outsourcing/totvs/protheus/bin/ -name "AP*" -delete
+find /outsourcing/totvs/protheus/bin/ -name "*.FCS" -delete
+find /outsourcing/totvs/protheus/bin/ -name "webapp_*.txt" -delete
+find /outsourcing/totvs/protheus/dbaccess/ -name "core.*" -delete
+
+# CRIANDO PASTA DO BACKUP
+cd /outsourcing/totvs/protheus_data/downloads/ 
+rm -rf backup_ticket_x 
+mkdir -p backup_ticket_x 
+
+# CRIANDO BACKUP DO SMARTCLIENT
+cd backup_ticket_x/ 
+sudo cp -p ../smartclient.zip . 
+
+# CRIANDO BACKUP DA PROTHEUS_DATA 
+cd /outsourcing/totvs/protheus_data/ 
+zip -r /outsourcing/totvs/protheus_data/downloads/backup_ticket_x/profile.zip profile 
+zip -r /outsourcing/totvs/protheus_data/downloads/backup_ticket_x/system.zip system 
+zip -r /outsourcing/totvs/protheus_data/downloads/backup_ticket_x/systemload.zip systemload
+
+# CRIANDO BACKUP DA APPSERVER 
+cd /outsourcing/totvs/protheus/bin/ 
+zip -r /outsourcing/totvs/protheus_data/downloads/backup_ticket_x/appserver.zip appserver -x "appserver/backup_cloud/*" -x "appserver/*.log" -x "appserver/*.fcs" -x "appserver/*.FCS" -x "appserver/core.*" -x "appserver/appserver.zip" -x "appserver/webapp_*.txt" 
+
+# CRIANDO BACKUP DA DBACCESS 
+cd /outsourcing/totvs/protheus/dbaccess 
+zip -r /outsourcing/totvs/protheus_data/downloads/backup_ticket_x/dbaccess.zip 7891 -x "7891/backup_cloud/*" -x "7891/core.*" -x "7891/dbaccess.zip" 
+
+# FAZ O BACKUP DOS RPOS
+grep -o "SourcePath=.*" /outsourcing/totvs/protheus/bin/appserver/appserver.ini | while read line; do 
+    folder=$(echo $line | sed "s/SourcePath=//") 
+    name=$(grep -B1 "$line" /outsourcing/totvs/protheus/bin/appserver/appserver.ini | grep -o "\[.*\]" | head -1) 
+    sudo cp -rp $folder /outsourcing/totvs/protheus_data/downloads/backup_ticket_x/$name 
+done
+
+# AJUSTA O NOME DAS PASTAS
+find /outsourcing/totvs/protheus_data/downloads/backup_ticket_x -type d -name "*[*" -print0 | while read -d $'\0' dir; do 
+    newname=$(echo "$dir" | sed 's/[][]//g') 
+    mv "$dir" "$newname" 
+done
+
+# APLICANCO PERMISSOES 
+chmod -R 770 /outsourcing/totvs/protheus_data/*  
+chown -R protheus.totvs /outsourcing/totvs/protheus_data/*  
+cd /outsourcing/totvs/protheus_data/downloads/backup_ticket_x/ 
+ll 
+# CONCLUIDO

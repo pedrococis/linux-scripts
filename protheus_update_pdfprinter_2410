@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# Cores para log
+VERDE="\e[32m"
+AMARELO="\e[33m"
+VERMELHO="\e[31m"
+RESET="\e[0m"
+
+# Função de log com timestamp
+log() {
+    local nivel=$1
+    local mensagem=$2
+    local data=$(date '+%Y-%m-%d %H:%M:%S')
+
+    case $nivel in
+        INFO) cor=$VERDE ;;
+        WARN) cor=$AMARELO ;;
+        ERRO) cor=$VERMELHO ;;
+        *) cor=$RESET ;;
+    esac
+
+    echo -e "${cor}[$data][$nivel]${RESET} $mensagem"
+}
+
+# Caminhos
+SOURCE_FILE="/outsourcing/totvs/protheus_data/downloads/pdfprinter"
+TARGET_DIR="/outsourcing/totvs/protheus/bin/"
+
+# Para cada pasta appserver* (exceto appserver_cloud)
+for APP_DIR in "$TARGET_DIR"appserver*/; do
+    if [[ -d "$APP_DIR" && "${APP_DIR}" != "${TARGET_DIR}appserver_cloud/" ]]; then
+
+        # Apagar printer antigo
+        if [[ -f "$APP_DIR/printer" ]]; then
+            log INFO "Removendo $APP_DIR/printer"
+            rm -f "$APP_DIR/printer" || { log ERRO "Falha ao remover printer em $APP_DIR"; exit 1; }
+        fi
+
+        # Apagar pdfprinter antigo
+        if [[ -f "$APP_DIR/pdfprinter" ]]; then
+            log INFO "Removendo $APP_DIR/pdfprinter"
+            rm -f "$APP_DIR/pdfprinter" || { log ERRO "Falha ao remover pdfprinter em $APP_DIR"; exit 1; }
+        fi
+
+        # Copiar novo pdfprinter
+        log INFO "Copiando $SOURCE_FILE para $APP_DIR"
+        /bin/cp -f "$SOURCE_FILE" "$APP_DIR" || { log ERRO "Falha ao copiar para $APP_DIR"; exit 1; }
+
+        # Renomear para printer
+        log INFO "Renomeando $APP_DIR/pdfprinter para $APP_DIR/printer"
+        mv -f "$APP_DIR/pdfprinter" "$APP_DIR/printer" || { log ERRO "Falha ao renomear em $APP_DIR"; exit 1; }
+
+        # Ajustar permissões
+        log INFO "Ajustando permissões para $APP_DIR/printer"
+        chmod 770 "$APP_DIR/printer" || { log ERRO "Falha ao ajustar permissões em $APP_DIR"; exit 1; }
+        chown protheus:totvs "$APP_DIR/printer" || { log ERRO "Falha ao ajustar propriedade em $APP_DIR"; exit 1; }
+
+    else
+        log WARN "Ignorando $APP_DIR"
+    fi
+done
+
+log INFO "Processo concluído com sucesso!"

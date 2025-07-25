@@ -1,0 +1,34 @@
+#!/bin/bash
+/outsourcing/totvs/cloud/scripts/protheus/actions/protheus_all_services.py stop
+find /var/log/* -delete
+find /var/spool/postfix/maildrop/* -delete
+find /mnt/* -delete
+find /tmp/* -delete
+find /dev/shm/* -delete
+find /var/tmp/* -delete
+find /var/cache/yum/ -type f -delete
+find /root/ -name "core.*" -delete
+find /root/oradiag_root/diag/clients/user_root/ -name "*.xml" -delete
+find /outsourcing/totvs/2c/logs -delete
+find /outsourcing/totvs/protheus/bin/ -name "core.*" -delete
+find /outsourcing/totvs/protheus/bin/ -name "*.log" -delete
+find /outsourcing/totvs/protheus/bin/ -name "AP*" -delete
+find /outsourcing/totvs/protheus/bin/ -name "*.FCS" -delete
+find /outsourcing/totvs/protheus/bin/ -name "webapp_*.txt" -delete
+find /outsourcing/totvs/protheus/bin/ -name "appserver.zip" -delete
+find /outsourcing/totvs/protheus/license/data/db_sys/ -name "SYSTEM.db" -delete
+find /outsourcing/totvs/protheus/dbaccess/ -name "core.*" -delete
+find /outsourcing/totvs/protheus/apo_core/apo_compilacao/ -name "*.rpo" -delete
+find /outsourcing/totvs/protheus/license/bin/appserver/ -name "core.*" -delete
+find /outsourcing/totvs/protheus_data/system/ -name "*.log" -delete
+find /outsourcing/totvs/protheus_data/system/ -name "*.tmp" -delete
+find /outsourcing/totvs/protheus_data/system/ -name "*sc" -delete
+find /outsourcing/totvs/protheus_data/system/ -name "sc*" -delete
+find /outsourcing/totvs/bkp/ -name "*.zip" -mtime +7 -delete
+find /outsourcing/totvs/protheus/ -name "*.zip" -type f -size +100M -mtime +7 -delete
+find /outsourcing/totvs/protheus_data/ -name "system_" -mtime +7 -delete
+find /outsourcing/totvs/protheus_data/ -name "systemload_" -mtime +7 -delete
+find /outsourcing/totvs/protheus_data/ -name "profile_" -mtime +7 -delete
+yum clean all
+reboot
+# CONCLUIDO

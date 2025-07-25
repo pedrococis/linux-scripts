@@ -1,0 +1,199 @@
+#!/bin/bash
+
+# Cores e função de log
+GREEN="\e[32m"
+YELLOW="\e[33m"
+RED="\e[31m"
+RESET="\e[0m"
+
+log_info()  { echo -e "${GREEN}[INFO]${RESET} $1"; }
+log_warn()  { echo -e "${YELLOW}[AVISO]${RESET} $1"; }
+log_error() { echo -e "${RED}[ERRO]${RESET} $1"; }
+
+# Caminhos definidos
+SOURCE_RPO="/outsourcing/totvs/protheus_data/downloads/tlpp.rpo"
+BASE_BIN="/outsourcing/totvs/protheus/bin"
+
+# Appservers definidos para ajustes
+APPSERVERS=(
+    "$BASE_BIN/appserver"
+    "$BASE_BIN/appserver_2"
+    "$BASE_BIN/appserver_3"
+    "$BASE_BIN/appserver_4"
+)
+BROKER_DIR="$BASE_BIN/appserver_broker_webmonitor"
+BROKER_INI="$BROKER_DIR/appsrvlinux.ini"
+
+TDS_TAGS=(
+    "AllowMonitor=*"
+    "EnableDisconnectUser=*"
+    "EnableSendMessage=*"
+    "EnableBlockNewConnection=*"
+)
+
+# Contadores para resumo
+total_destinos=0
+sucessos=0
+DESTINOS_OK=()
+
+# Validação principal
+if [ ! -f "$SOURCE_RPO" ]; then
+    log_error "Arquivo $SOURCE_RPO não encontrado. Abortando."
+    exit 1
+fi
+
+log_info "Arquivo de origem validado."
+
+# Valida diretórios de appserver para ajustes
+APPSERVER_EXISTE=false
+for DIR in "${APPSERVERS[@]}"; do
+    if [ -d "$DIR" ]; then
+        APPSERVER_EXISTE=true
+        break
+    fi
+done
+
+if [ "$APPSERVER_EXISTE" = false ]; then
+    log_error "Nenhum diretório de appserver definido localizado. Abortando."
+    exit 1
+fi
+
+log_info "Pelo menos um appserver definido encontrado para ajustes."
+
+# Valida broker se existir
+if [ -d "$BROKER_DIR" ]; then
+    if [ ! -f "$BROKER_INI" ]; then
+        log_error "Broker encontrado mas $BROKER_INI não existe. Abortando."
+        exit 1
+    fi
+    log_info "Broker validado."
+else
+    log_warn "Broker não localizado. Ignorando ajustes de broker."
+fi
+
+# Ajusta permissões do arquivo
+log_info "Ajustando permissões do arquivo tlpp.rpo."
+sudo chown protheus:totvs "$SOURCE_RPO" || exit 1
+sudo chmod 770 "$SOURCE_RPO" || exit 1
+
+# Copia para todos os diretórios que comecem com appserver em bin
+for DIR in "$BASE_BIN"/appserver*; do
+    if [ -d "$DIR" ]; then
+        total_destinos=$((total_destinos+1))
+        sudo cp -rp "$SOURCE_RPO" "$DIR/" && \
+        DESTINOS_OK+=("$DIR") && sucessos=$((sucessos+1)) && \
+        log_info "Cópia realizada em $DIR"
+    else
+        log_warn "Ignorando $DIR, não é diretório."
+    fi
+done
+
+# Ajuste de ini nos appservers definidos
+USE_SSL=false
+
+for DIR in "${APPSERVERS[@]}"; do
+    INI="$DIR/appserver.ini"
+    if [ -d "$DIR" ] && [ -f "$INI" ]; then
+        log_info "Ajustando $INI"
+
+        if ! grep -q "^\[TDS\]" "$INI"; then
+            log_error "Seção [TDS] não encontrada em $INI. Ignorando."
+            continue
+        fi
+
+        for TAG in "${TDS_TAGS[@]}"; do
+            if ! grep -q "^$TAG" "$INI"; then
+                sudo sed -i "/^\[TDS\]/a $TAG" "$INI"
+                log_info "Incluído $TAG"
+            else
+                log_warn "$TAG já existe."
+            fi
+        done
+
+        if grep -q "^\[SSLConfigure\]" "$INI"; then
+            USE_SSL=true
+            log_info "SSL detectado em $INI"
+        fi
+    fi
+done
+
+# Ajuste de TDS no broker
+if [ -d "$BROKER_DIR" ] && [ -f "$BROKER_INI" ]; then
+    log_info "Ajustando seção [TDS] do broker $BROKER_INI"
+    if ! grep -q "^\[TDS\]" "$BROKER_INI"; then
+        log_warn "Seção [TDS] não encontrada no broker. Criando seção."
+        echo -e "\n[TDS]" | sudo tee -a "$BROKER_INI" > /dev/null
+        for TAG in "${TDS_TAGS[@]}"; do
+            echo "$TAG" | sudo tee -a "$BROKER_INI" > /dev/null
+            log_info "Incluído $TAG no broker"
+        done
+    else
+        for TAG in "${TDS_TAGS[@]}"; do
+            if ! grep -q "^$TAG" "$BROKER_INI"; then
+                sudo sed -i "/^\[TDS\]/a $TAG" "$BROKER_INI"
+                log_info "Incluído $TAG no broker"
+            else
+                log_warn "$TAG já existe no broker"
+            fi
+        done
+    fi
+else
+    log_warn "Broker não localizado ou appsrvlinux.ini ausente. Ajuste da seção [TDS] ignorado."
+fi
+
+# Ajuste MONITORING_TYPE no broker na sessão [BALANCE_SMART_CLIENT_DESKTOP]
+if [ -d "$BROKER_DIR" ] && [ -f "$BROKER_INI" ]; then
+    MON_TYPE="SMARTCLIENT_ACTIVE"
+    $USE_SSL && MON_TYPE="SMARTCLIENT_SSL_ACTIVE"
+
+    if ! grep -q "^\[BALANCE_SMART_CLIENT_DESKTOP\]" "$BROKER_INI"; then
+        log_warn "Seção [BALANCE_SMART_CLIENT_DESKTOP] não encontrada em $BROKER_INI. Criando seção."
+        echo -e "\n[BALANCE_SMART_CLIENT_DESKTOP]" | sudo tee -a "$BROKER_INI" > /dev/null
+        echo "MONITORING_TYPE=$MON_TYPE" | sudo tee -a "$BROKER_INI" > /dev/null
+        log_info "Seção criada e MONITORING_TYPE definido como $MON_TYPE"
+    else
+        SECTION_START_LINE=$(grep -n "^\[BALANCE_SMART_CLIENT_DESKTOP\]" "$BROKER_INI" | cut -d: -f1)
+        TOTAL_LINES=$(wc -l < "$BROKER_INI")
+        NEXT_SECTION_LINE=$(tail -n +"$((SECTION_START_LINE + 1))" "$BROKER_INI" | grep -n "^\[" | head -n1 | cut -d: -f1)
+        if [ -z "$NEXT_SECTION_LINE" ]; then
+            SECTION_END_LINE=$TOTAL_LINES
+        else
+            SECTION_END_LINE=$((SECTION_START_LINE + NEXT_SECTION_LINE - 1))
+        fi
+
+        MONITORING_LINE=$(sed -n "${SECTION_START_LINE},${SECTION_END_LINE}p" "$BROKER_INI" | grep -n "^MONITORING_TYPE=" | cut -d: -f1)
+
+        if [ -z "$MONITORING_LINE" ]; then
+            INSERT_LINE=$((SECTION_START_LINE + 1))
+            sudo sed -i "${INSERT_LINE}iMONITORING_TYPE=$MON_TYPE" "$BROKER_INI"
+            log_info "MONITORING_TYPE incluído na seção [BALANCE_SMART_CLIENT_DESKTOP] como $MON_TYPE"
+        else
+            ABS_LINE=$((SECTION_START_LINE + MONITORING_LINE - 1))
+            CURRENT_VALUE=$(sed -n "${ABS_LINE}p" "$BROKER_INI" | cut -d= -f2)
+            if [ "$CURRENT_VALUE" == "$MON_TYPE" ]; then
+                log_warn "MONITORING_TYPE já está definido como $MON_TYPE na seção [BALANCE_SMART_CLIENT_DESKTOP]."
+            else
+                sudo sed -i "${ABS_LINE}s|.*|MONITORING_TYPE=$MON_TYPE|" "$BROKER_INI"
+                log_info "MONITORING_TYPE atualizado para $MON_TYPE na seção [BALANCE_SMART_CLIENT_DESKTOP]."
+            fi
+        fi
+    fi
+else
+    log_warn "Broker não encontrado ou appsrvlinux.ini ausente. Ajuste MONITORING_TYPE ignorado."
+fi
+
+# Resumo final
+log_info "===================== RESUMO DA ATUALIZAÇÃO ====================="
+log_info "Total de diretórios processados (cópia tlpp.rpo): $total_destinos"
+log_info "Atualizações bem-sucedidas (incluindo cópia e ajustes): $sucessos"
+if [ ${#DESTINOS_OK[@]} -gt 0 ]; then
+    log_info "Serviços atualizados:"
+    for destino in "${DESTINOS_OK[@]}"; do
+        log_info " - $destino"
+    done
+    log_info "=================================================================="
+    log_info "ATENÇÃO: É necessário reinicializar os serviços listados acima para que as alterações entrem em vigor."
+else
+    log_warn "Nenhum serviço foi atualizado."
+fi
+log_info "=================================================================="

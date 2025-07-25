@@ -1,0 +1,116 @@
+#!/bin/bash
+# Script para atualização de arquivos do Protheus
+# Diretórios de origem e destino
+ORIGEM_APPSERVER="/outsourcing/totvs/protheus_data/downloads/atualizar/"
+APPSERVER_DESTINO="/outsourcing/totvs/protheus/bin"
+
+# Cores para formatação de saída
+VERDE="\e[32m"
+AMARELO="\e[33m"
+VERMELHO="\e[31m"
+RESET="\e[0m"
+
+# Função para exibir mensagens formatadas
+log() {
+    local nivel=$1
+    local mensagem=$2
+    local data=$(date "+%Y-%m-%d %H:%M:%S")
+    
+    case "$nivel" in
+        "INFO") echo -e "${VERDE}[$data] [INFO] $mensagem${RESET}" ;;
+        "AVISO") echo -e "${AMARELO}[$data] [AVISO] $mensagem${RESET}" ;;
+        "ERRO") echo -e "${VERMELHO}[$data] [ERRO] $mensagem${RESET}" ;;
+    esac
+}
+
+# Função para limpar ao sair com erro
+limpar_e_sair() {
+    log "ERRO" "$1"
+    exit 1
+}
+
+# Verifica se está sendo executado como root/sudo
+if [[ $EUID -ne 0 && ! -w "$APPSERVER_DESTINO" ]]; then
+    limpar_e_sair "Este script precisa de privilégios de administrador para ser executado. Use sudo."
+fi
+
+# Verifica se o diretório de origem existe
+if [ ! -d "$ORIGEM_APPSERVER" ]; then
+    limpar_e_sair "A pasta $ORIGEM_APPSERVER não foi encontrada."
+fi
+
+# Verifica se o diretório de origem está vazio
+if [ -z "$(ls -A "$ORIGEM_APPSERVER")" ]; then
+    limpar_e_sair "A pasta $ORIGEM_APPSERVER está vazia."
+fi
+
+# Exibe backup dos arquivos
+log "INFO" "Iniciando processo de atualização dos servidores Protheus..."
+log "INFO" "Verificando arquivos na pasta $ORIGEM_APPSERVER antes da cópia..."
+
+# Verifica se existem arquivos para remover e os remove
+arquivos_para_remover=(
+    "$ORIGEM_APPSERVER/appserver.ini"
+    "$ORIGEM_APPSERVER/core.*"
+    "$ORIGEM_APPSERVER/*.log"
+    "$ORIGEM_APPSERVER/*.FCS"
+    "$ORIGEM_APPSERVER/webapp_*.txt"
+    "$ORIGEM_APPSERVER/AP*"
+)
+
+# Remove arquivos específicos, se existirem (usando find para maior confiabilidade)
+log "INFO" "Removendo arquivos desnecessários..."
+find "$ORIGEM_APPSERVER" -name "appserver.ini" -o -name "core.*" -o -name "*.log" -o -name "*.FCS" \
+    -o -name "webapp_*.txt" -o -name "AP*" -delete 2>/dev/null
+
+# Define permissões e propriedade para os arquivos na origem
+log "INFO" "Ajustando permissões e propriedade dos arquivos..."
+chmod -R 770 "$ORIGEM_APPSERVER" 2>/dev/null || log "AVISO" "Erro ao definir permissões"
+chown -R protheus:totvs "$ORIGEM_APPSERVER" 2>/dev/null || log "AVISO" "Erro ao definir propriedade"
+
+# Não é necessário backup antes da atualização
+
+# Para os serviços do Protheus
+log "INFO" "Parando serviços do Protheus..."
+/outsourcing/totvs/cloud/scripts/protheus/actions/protheus_all_services.py stop > /tmp/protheus_stop.log 2>&1
+
+# Verifica se os serviços foram parados corretamente
+if [ $? -ne 0 ]; then
+    log "AVISO" "Possível erro ao parar os serviços, verifique /tmp/protheus_stop.log"
+else
+    log "INFO" "Serviços parados com sucesso"
+fi
+
+# Contador para estatísticas (para relatório final)
+total_destinos=0
+sucessos=0
+
+# Loop para copiar os arquivos para cada appserver
+for destino in "$APPSERVER_DESTINO"/appserver*; do
+    if [[ -d "$destino" && "$destino" != "$APPSERVER_DESTINO/appserver_cloud" ]]; then
+        total_destinos=$((total_destinos + 1))
+        
+        log "INFO" "Copiando arquivos para $destino..."
+        
+        # Usa rsync para cópia mais eficiente
+        rsync -a --info=progress2 "${ORIGEM_APPSERVER}"* "$destino" 2>/dev/null
+        
+        if [ $? -eq 0 ]; then
+            log "INFO" "Arquivos copiados com sucesso para $destino"
+            sucessos=$((sucessos + 1))
+        else
+            log "AVISO" "Erro ao copiar arquivos para $destino"
+        fi
+    fi
+done
+
+# Serviços não serão iniciados automaticamente para permitir validações manuais
+log "INFO" "Os serviços do Protheus estão parados. Execute validações necessárias e inicie-os manualmente quando apropriado."
+
+# Resumo final
+log "INFO" "===================== RESUMO DA ATUALIZAÇÃO ====================="
+log "INFO" "Total de diretórios processados: $total_destinos"
+log "INFO" "Atualizações bem-sucedidas: $sucessos"
+log "INFO" "================================================================="
+
+exit 0

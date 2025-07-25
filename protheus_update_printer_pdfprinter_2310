@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Cores para log
+VERDE="\e[32m"
+AMARELO="\e[33m"
+VERMELHO="\e[31m"
+RESET="\e[0m"
+
+# Caminhos fixos
+ORIGEM="/outsourcing/totvs/protheus_data/downloads"
+DESTINOS_BASE="/outsourcing/totvs/protheus/bin/"
+ARQUIVOS=("printer" "pdfprinter")
+
+# Função de log
+log() {
+    local tipo="$1"
+    local msg="$2"
+    case "$tipo" in
+        INFO)  echo -e "${VERDE}[INFO]${RESET} $msg" ;;
+        AVISO) echo -e "${AMARELO}[AVISO]${RESET} $msg" ;;
+        ERRO)  echo -e "${VERMELHO}[ERRO]${RESET} $msg" ;;
+        *)     echo "[LOG] $msg" ;;
+    esac
+}
+
+log INFO "Iniciando cópia e ajuste de permissões dos arquivos para as pastas appserver..."
+
+# Encontrar e processar cada diretório que inicia com 'appserver'
+find "$DESTINOS_BASE" -type d -name 'appserver*' | while read -r destino; do
+    log INFO "Processando diretório destino: $destino"
+
+    for arquivo in "${ARQUIVOS[@]}"; do
+        if cp "$ORIGEM/$arquivo" "$destino/"; then
+            chmod 770 "$destino/$arquivo"
+            chown protheus.totvs "$destino/$arquivo"
+            log INFO "Arquivo '$arquivo' copiado e permissões ajustadas com sucesso."
+        else
+            log ERRO "Falha ao copiar o arquivo '$arquivo' para '$destino'."
+        fi
+    done
+
+    log INFO "Resumo da cópia:"
+    echo -e "Origem:"
+    ls -l "$ORIGEM"/printer "$ORIGEM"/pdfprinter
+    echo -e "Destino ($destino):"
+    ls -l "$destino"/printer "$destino"/pdfprinter
+done
+
+log INFO "Processo concluído com sucesso."
