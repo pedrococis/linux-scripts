@@ -1,0 +1,143 @@
+#!/bin/bash
+
+# Script de Backup do Protheus
+# Data: $(date +"%d/%m/%Y - %H:%M:%S")
+
+# Definição de variáveis
+export LANG=pt_BR.UTF-8
+DATA_ATUAL=$(date +"%Y%m%d")
+DIR_PROTHEUS="/outsourcing/totvs/protheus"
+DIR_PROTHEUS_DATA="/outsourcing/totvs/protheus_data"
+
+# Cores para saída
+VERDE='\033[0;32m'
+AMARELO='\033[1;33m'
+AZUL='\033[0;34m'
+VERMELHO='\033[0;31m'
+SEM_COR='\033[0m'
+
+# Função para mostrar mensagem de progresso
+mostrar_progresso() {
+    echo -e "${VERDE}[OK]${SEM_COR} $1"
+}
+
+# Função para mostrar erro
+mostrar_erro() {
+    echo -e "${VERMELHO}[ERRO]${SEM_COR} $1"
+    exit 1
+}
+
+# Função para limpeza de arquivos
+limpar_arquivos() {
+    echo -e "\n${AMARELO}=== Limpando arquivos temporários ===${SEM_COR}"
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos core.* do diretório bin"
+    find ${DIR_PROTHEUS}/bin/ -name "core.*" -delete
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos de log do diretório bin"
+    find ${DIR_PROTHEUS}/bin/ -name "*.log" -delete
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos AP* do diretório bin"
+    find ${DIR_PROTHEUS}/bin/ -name "AP*" -delete
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos .FCS do diretório bin"
+    find ${DIR_PROTHEUS}/bin/ -name "*.FCS" -delete
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos webapp_*.txt do diretório bin"
+    find ${DIR_PROTHEUS}/bin/ -name "webapp_*.txt" -delete
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos appserver.zip do diretório bin"
+    find ${DIR_PROTHEUS}/bin/ -name "appserver.zip" -delete
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos .rpo da compilação"
+    find ${DIR_PROTHEUS}/apo_core/apo_compilacao/ -name "*.rpo" -delete
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos core.* do diretório dbaccess"
+    find ${DIR_PROTHEUS}/dbaccess/ -name "core.*" -delete
+    
+    echo -e "${AZUL}[LIMPANDO]${SEM_COR} Arquivos de diagnóstico e SC do system"
+    find ${DIR_PROTHEUS_DATA}/system/ -name "gpe_xml_diagnostico*.xml" -delete
+    find ${DIR_PROTHEUS_DATA}/system/ -name "sc*.*" -delete
+    
+    mostrar_progresso "Limpeza de arquivos concluída"
+}
+
+# Função para criar backups
+criar_backups() {
+    echo -e "\n${AMARELO}=== Criando backups do Protheus ===${SEM_COR}"
+    
+    cd ${DIR_PROTHEUS}
+    
+    echo -e "${VERDE}[BACKUP]${SEM_COR} ${AMARELO}Criando backup do diretório bin${SEM_COR}"
+    zip -r -0 bin_${DATA_ATUAL}.zip bin || mostrar_erro "Falha ao criar backup do bin"
+    
+    echo -e "${VERDE}[BACKUP]${SEM_COR} ${AMARELO}Criando backup do diretório apo_core${SEM_COR}"
+    zip -r -0 apo_core_${DATA_ATUAL}.zip apo_core || mostrar_erro "Falha ao criar backup do apo_core"
+    
+    echo -e "${VERDE}[BACKUP]${SEM_COR} ${AMARELO}Criando backup do diretório dbaccess${SEM_COR}"
+    zip -r -1 dbaccess_${DATA_ATUAL}.zip dbaccess || mostrar_erro "Falha ao criar backup do dbaccess"
+    
+    mostrar_progresso "Backups do Protheus concluídos em: ${DIR_PROTHEUS}"
+    
+    echo -e "\n${AMARELO}=== Criando backups do Protheus_data ===${SEM_COR}"
+    
+    cd ${DIR_PROTHEUS_DATA}
+    
+    echo -e "${VERDE}[BACKUP]${SEM_COR} ${AMARELO}Criando backup do diretório profile${SEM_COR}"
+    zip -r -1 profile_${DATA_ATUAL}.zip profile || mostrar_erro "Falha ao criar backup do profile"
+    
+    echo -e "${VERDE}[BACKUP]${SEM_COR} ${AMARELO}Criando backup do diretório system${SEM_COR}"
+    zip -r -1 system_${DATA_ATUAL}.zip system || mostrar_erro "Falha ao criar backup do system"
+    
+    echo -e "${VERDE}[BACKUP]${SEM_COR} ${AMARELO}Criando backup do diretório systemload${SEM_COR}"
+    zip -r -1 systemload_${DATA_ATUAL}.zip systemload || mostrar_erro "Falha ao criar backup do systemload"
+    
+    mostrar_progresso "Backups do Protheus_data concluídos em: ${DIR_PROTHEUS_DATA}"
+}
+
+# Função para ajustar permissões
+ajustar_permissoes() {
+    echo -e "\n${AMARELO}=== Ajustando permissões dos arquivos ===${SEM_COR}"
+    
+    echo -e "${VERDE}[PERMISSÕES]${SEM_COR} Ajustando permissões para 770"
+    chmod -R 770 /outsourcing/totvs/* 2>/dev/null || true
+    
+    echo -e "${VERDE}[PERMISSÕES]${SEM_COR} Ajustando proprietário para protheus.totvs"
+    chown -R protheus.totvs /outsourcing/totvs/* 2>/dev/null || true
+    
+    mostrar_progresso "Permissões ajustadas com sucesso"
+}
+
+# Função para mostrar resumo
+mostrar_resumo() {
+    echo -e "\n${AMARELO}=== Resumo dos backups criados ===${SEM_COR}"
+    
+    echo -e "\n${VERDE}Backups do Protheus (${DIR_PROTHEUS}):${SEM_COR}"
+    echo -e "${AMARELO}Tamanho dos arquivos:${SEM_COR}"
+    cd ${DIR_PROTHEUS}
+    ls -lh *_${DATA_ATUAL}.zip | awk '{print $5 "\t" $9}'
+    PROTHEUS_SIZE=$(du -ch *_${DATA_ATUAL}.zip | grep total | awk '{print $1}')
+    
+    echo -e "\n${VERDE}Backups do Protheus_data (${DIR_PROTHEUS_DATA}):${SEM_COR}"
+    echo -e "${AMARELO}Tamanho dos arquivos:${SEM_COR}"
+    cd ${DIR_PROTHEUS_DATA}
+    ls -lh *_${DATA_ATUAL}.zip | awk '{print $5 "\t" $9}'
+    PROTHEUS_DATA_SIZE=$(du -ch *_${DATA_ATUAL}.zip | grep total | awk '{print $1}')
+    
+    echo -e "\n${VERDE}Espaço total utilizado em ${DIR_PROTHEUS}:${SEM_COR} ${PROTHEUS_SIZE}"
+    echo -e "${VERDE}Espaço total utilizado em ${DIR_PROTHEUS_DATA}:${SEM_COR} ${PROTHEUS_DATA_SIZE}"
+}
+
+# Execução principal
+echo -e "${AMARELO}=====================================================${SEM_COR}"
+echo -e "${AMARELO}     BACKUP DO SISTEMA PROTHEUS - ${DATA_ATUAL}      ${SEM_COR}"
+echo -e "${AMARELO}=====================================================${SEM_COR}"
+
+# Executa as funções
+limpar_arquivos
+criar_backups
+ajustar_permissoes
+mostrar_resumo
+
+echo -e "\n${VERDE}[CONCLUÍDO]${SEM_COR} Backup finalizado com sucesso em $(date +"%d/%m/%Y - %H:%M:%S")"
+echo -e "${AMARELO}=====================================================${SEM_COR}"
